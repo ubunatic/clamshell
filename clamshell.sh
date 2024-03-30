@@ -60,6 +60,8 @@ clamshelld_log="$HOME/Library/Logs/clamshell.log"
 clamshell_path="$(dirname "$0")"
 clamshell_share="$(dirname "$clamshell_path")/share/clamshell/clamshell.md"
 
+second_ns=1000000000
+
 clamshell-vars() {
     echo "clamshelld_service: $clamshelld_service"
     echo "clamshelld_prefix:  $clamshelld_prefix  ($( exists "$clamshelld_prefix" ))"
@@ -122,11 +124,16 @@ clamshell-daemon() {
 
         # Try to Sleep
         # ============
+        # This will put the system to sleep if clamshell mode is active.
+        # As a circut breaker for the breaking a misconfgured system,
+        # the sleep command is only run every 15 seconds.
+        # This will allow the user to open the lid and stop the daemon.
         if clamshell-sleep; then
             sleeping_since="$(date +%s)"
             awake_since=0
-            logger "system sleep initated, waiting 5s to reach sleep state"
-            sleep 5
+            logger "system sleep initated, waiting 15 to reach sleep"
+            logger "to counter-act unwanted sleep, run 'clamshell unload' in the next 15s"
+            sleep 15
             continue
         fi
 
@@ -184,6 +191,10 @@ clamshell-has-legacy() {
     pmset -g powerstate | grep IODisplayWrangler | grep -q USEABLE
 }
 
+# clamshell-idle returns the idle time in nanoseconds of the system.
+# In case of an error, it returns 1 to prevent sleep.
+clamshell-idle-ns() { ioreg -c IOHIDSystem | grep "HIDIdleTime" | grep -oE "\d+" || echo 1; }
+
 
 # Clamshell Commands
 # ==================
@@ -213,6 +224,19 @@ clamshell-sleep() {
     if test -n "$CLAMSHELL_DEBUG"
     then pmset="echo-pmset"
     else pmset="/usr/bin/pmset"
+    fi
+
+    # clamshell-sleep can be a bad command if the system is not idle.
+    # If Apple changes the behavior of the system, this command could put the system to sleep permanently.
+    # To prevent this, clamshell-sleep checks if the system is idle for at least 1 minute.
+    local idle_seconds
+    (( idle_seconds = $(clamshell-idle-ns) / second_ns ))
+    if (( idle_seconds < 10 ))
+    then
+        if test -n "$CLAMSHELL_DEBUG"
+        then logger "system is idle for less than 10s (${idle_seconds}s), not initiating sleep"
+        fi
+        return 1
     fi
 
     if clamshell-yes; then
