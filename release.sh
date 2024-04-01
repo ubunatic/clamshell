@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 VERSION=$1
-TITLE="${2:-"Clamshell $VERSION"}"
 
 set -o errexit
+
+
+# Input Validation
+# ================
 
 if [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
 then echo "Releasing Clamshell version $VERSION"
@@ -13,44 +16,93 @@ else echo "Usage: $0 VERSION"
      exit 1
 fi
 
-# if git diff --exit-code
-# then echo "Working directory is clean"
-# elif read -rp "Stage all changes? (y/N) " yesno && test "$yesno" = "y" && git add .
-# then echo "Staged pending changes"
-# else echo "Please commit changes before running this script!"; exit 1
-# fi
 
-# if grep -q "$VERSION" Formula/clamshell.rb
-# then echo "Version $VERSION found in Formula/clamshell.rb"
-# else echo "Setting $VERSION in Formula/clamshell.rb"
-#      sed -i '' -e "s/tag: \"v.*\"/tag: \"$VERSION\"/g" Formula/clamshell.rb
-#      git add Formula/clamshell.rb
-#      git commit -m "set version to $VERSION"
-#      git tag "$VERSION" -f
-# fi
+# Variables
+# =========
 
-# git push -f
-# git push --tags -f
-# echo "Version $VERSION code and tag committed and pushed"
+tarball_prefix="https://github.com/ubunatic/clamshell/archive/refs/tags"
+tarball_url="$tarball_prefix/$VERSION.tar.gz"
+tarball="$(mktemp -d -t clamshell-release-XXXXXX)/$VERSION.tar.gz"
 
-# download the latest release tarball
-tmp="$(mktemp -d -t clamshell-release-XXXXXX)/$VERSION.tar.gz"
-curl -L "https://github.com/ubunatic/clamshell/archive/refs/tags/$VERSION.tar.gz" -o "$tmp"
-echo "Downloaded release tarball to $tmp"
-echo "computing sha256 checksum"
-shasum -a 256 "$tmp"
-exit 0
 
-# if ! type gh > /dev/null
-# then echo "Github CLI not found, release incomplete"; exit 1
-# fi
+# Version Update
+# ==============
 
-# if gh release view "$VERSION" > /dev/null
-# then echo "Release $VERSION already exists, deleting old release"
-#      # also delete all files attached to the release
-#      gh release view "$VERSION" --json assets --jq '.assets[].id' | xargs -I {}
-#      # gh release delete -y "$VERSION"
-# fi
+echo "Setting version $VERSION in clamshell.sh"
+if sed -i '' -e "s|^clamshell_version=.*|clamshell_version=\"$VERSION\"|g" clamshell.sh &&
+   ./clamshell.sh --version | grep -q "$VERSION"
+then echo "Updated clamshell.sh with version $VERSION"
+else echo "Failed to update clamshell.sh"; exit 1
+fi
 
-# echo "Creating release $VERSION"
-# gh release create "$VERSION" --title "$TITLE" --notes "Release $VERSION"
+echo "Setting version $VERSION and resetting sha256 in in Formula/clamshell.rb"
+if sed -i '' \
+     -e "s|url \"$tarball_prefix/.*\"|url \"$tarball_url\"|g" \
+     -e "s|sha256 \".*\"|sha256 \"\"|g" \
+     Formula/clamshell.rb &&
+   grep -q "$VERSION" Formula/clamshell.rb
+then echo "Updated formula with version $VERSION and empty sha256"
+else echo "Failed to update formula"; exit 1
+fi
+
+echo "Checking for pending changes"
+if git diff --exit-code
+then echo "Working directory is clean"
+elif read -rp "Stage all changes? (y/N) " yesno &&
+     test "$yesno" = "y" &&
+     git add . &&
+     git commit -m "release version $VERSION"
+then echo "Committed pending changes"
+else echo "Please commit changes before running this script!"; exit 1
+fi
+
+echo "Tagging release $VERSION"
+if git tag "$VERSION" -f &&
+   git push &&
+   git push --tags -f
+then echo "Version $VERSION tagged and pushed"
+else echo "Failed to tag and push version $VERSION"; exit 1
+fi
+
+
+# Formula Validation
+# ==================
+
+if curl -L "$tarball_url" -o "$tarball" --silent
+then echo "Downloaded release tarball to $tarball"
+else echo "Failed to download release tarball"; exit 1
+fi
+
+if sha="$(shasum -a 256 "$tarball" | cut -d ' ' -f 1)"
+then echo "Calculated sha256 checksum: $sha"
+else echo "Failed to calculate sha256 checksum"; exit 1
+fi
+
+echo "Updating formula with sha256:$sha"
+if sed -i '' -e "s|sha256 \".*\"|sha256 \"$sha\"|g" Formula/clamshell.rb &&
+   grep -q "$sha" Formula/clamshell.rb
+then echo "Updated formula with version $VERSION"
+else echo "Failed to update formula"; exit 1
+fi
+
+echo "Testing formula build"
+rm -f "$HOME"/Library/Caches/Homebrew/downloads/*clamshell-*.tar.gz
+brew uninstall --force clamshell 2>/dev/null
+
+if brew install --build-from-source Formula/clamshell.rb &&
+   /opt/homebrew/bin/clamshell --version | grep -q "$VERSION"
+then echo "Formula build successful"
+else echo "Failed to build formula"; exit 1
+fi
+
+if git diff --exit-code
+then echo "Formula changes are clean"; exit 0
+fi
+
+echo "Committing and pushing formula changes"
+if git add Formula/clamshell.rb &&
+   git commit -m "update Formula sha256 for $VERSION" &&
+   git push
+then echo "Formula sha256 committed and pushed"
+else echo "Failed to commit and push formula sha256"; exit 1
+fi

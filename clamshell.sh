@@ -42,6 +42,7 @@ Queries:
     summary             sm       Display a summary of all checks
     docs                doc      Explain what clamshell mode is and how it works
     log                 log      Tail the clamshelld log file
+    version             v        Show the current clamshell version
 
 Daemon Commands:
     daemon     dm    Runs the sleep command every second
@@ -71,13 +72,19 @@ EOF
 
 CLAMSHELL_DEBUG="${CLAMSHELL_DEBUG:-}"
 
-clamshelld_prefix="$HOME/Library/Clamshell/1.0.0"
+# Installation Paths
+# v1.x.x share the same prefix, we do not want to have multiple versions installed
+clamshelld_prefix="$HOME/Library/Clamshell/v1"
 clamshelld_bin="$clamshelld_prefix/bin/clamshelld"
-clamshelld_md="$clamshelld_prefix/share/clamshell.md"
-clamshelld_service="com.github.ubunatic.clamshell.plist"
-clamshelld_plist="$HOME/Library/LaunchAgents/$clamshelld_service"
-clamshelld_log="$HOME/Library/Logs/clamshell.log"
 
+# Launchd Service Configuration
+clamshelld_service="com.github.ubunatic.clamshell.clamshelld.plist"
+clamshelld_plist="$HOME/Library/LaunchAgents/$clamshelld_service"
+clamshelld_log="$HOME/Library/Logs/clamshelld.log"
+
+# Runtime Variables
+clamshell_version="v1.0.0"
+clamshell_source="$(realpath "$0")"
 clamshell_path="$(dirname "$0")"
 clamshell_share="$(dirname "$clamshell_path")/share/clamshell/clamshell.md"
 
@@ -89,7 +96,6 @@ clamshell-vars() {
     echo "clamshelld_bin:     $clamshelld_bin  ($(    exists "$clamshelld_bin"    ))"
     echo "clamshelld_plist:   $clamshelld_plist  ($(  exists "$clamshelld_plist"  ))"
     echo "clamshelld_log:     $clamshelld_log  ($(    exists "$clamshelld_log"    ))"
-    echo "clamshelld_md:      $clamshelld_md  ($(     exists "$clamshelld_md"     ))"
     echo
     echo "clamshell_path:     $clamshell_path  ($(    exists "$clamshell_path"    ))"
     echo "clamshell_share:    $clamshell_share  ($(   exists "$clamshell_share"   ))"
@@ -431,12 +437,15 @@ clamshell-uninstall() {
     else echo "clamshell binary not found at $clamshelld_bin"
     fi
 
-    if test -e "$clamshelld_md" && sudo-rm "$clamshelld_md"
-    then echo "clamshell docs uninstalled from $clamshelld_md"
-    else echo "clamshell docs not found at $clamshelld_md"
+    if sudo rmdir "$clamshelld_prefix/bin" 2> /dev/null
+    then echo "clamshell bin dir removed"
+    else echo "clamshell bin dir not found $clamshelld_prefix/bin"
     fi
 
-    # TODO: remove log files and dirs
+    if sudo-rm "$clamshelld_log" "$clamshelld_log.old" 2> /dev/null
+    then echo "clamshell log files removed"
+    else echo "clamshell log files not found"
+    fi
 }
 
 clamshell-pid() {
@@ -531,6 +540,7 @@ clamshell-main() {
         -d|--debug)    export CLAMSHELL_DEBUG=1 ;;
         -h|--help|h*)  clamshell-help; return 0 ;;
         doc*|man*)     (clamshell-help; clamshell-docs) | less; return 0 ;;
+        v*|--v*)       echo "clamshell version $clamshell_version ($clamshell_source)"; return 0 ;;
         -*)            echo "Unknown option: $1"; return 1 ;;
     esac
     done
