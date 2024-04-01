@@ -1,7 +1,7 @@
 class Clamshell < Formula
     desc "CLI for safely managing MacBook clamshell mode."
     homepage "https://github.com/ubunatic/clamshell"
-    url "https://github.com/ubunatic/clamshell.git", using: :git, tag: "v1.0.0"
+    url "https://github.com/ubunatic/clamshell/archive/refs/tags/v1.0.0.tar.gz"
     head "https://github.com/ubunatic/clamshell.git", branch: "main"
 
     def install
