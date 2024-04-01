@@ -27,7 +27,7 @@ These circut breakers must be tested regularly!
 
 ## Circut Breaker 1: Idle Timeout
 1. Run `clamshell idle` to check if the idle timeout is working
-2. Run `clamshell load` and enter clamshell mode (close the lid)
+2. Run `clamshell load` and enter clamshell mode (close the lid) and wait 30 Seconds.
 3. Press a key and start moving the mouse every 2 Seconds (keep the lid closed)
 4. Login in to MacOS (typing your password also resets the idle timer)
 5. Enter `clamshell unload` (you can stop moving the mouse now)
