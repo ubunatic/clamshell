@@ -1,9 +1,27 @@
 #!/usr/bin/env bash
+#
+#   Copyright 2024 Uwe Jugel (@ubunatic)
+#
+#   Licensed under the Apache License, Version 2.0 (the "License");
+#   you may not use this file except in compliance with the License.
+#   You may obtain a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS,
+#   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#   See the License for the specific language governing permissions and
+#   limitations under the License.
+#
+#   The source code is hosted at https://github.com/ubunatic/clamshell.
+#   Please report issues and suggestions at https://github.com/ubunatic/clamshell/issues.
+#
 
 clamshell-help() { cat <<-EOF
 Usage: clamshell [OPTION] [COMMAND]
 
-The clamshell CLI helps you put your MacBook to sleep and keep it asleep when the lid is closed.
+The clamshell CLI helps putting your MacBook to sleep and keeping it asleep when the lid is closed.
 See 'clamshell docs' to learn why you need it and how it works.
 
 Options:
@@ -26,13 +44,14 @@ Queries:
     log                 log      Tail the clamshelld log file
 
 Daemon Commands:
-    daemon     dm    Runs the sleep command every second (also see clamshelld)
+    daemon     dm    Runs the sleep command every second
     install    in    Install a launchd service to run clamshelld
     uninstall  un    Uninstall the launchd service
     status     st    Check the status of the launchd service
     load       ld    Start the launchd service (alias: start)
     unload     ul    Stop the launchd service (alias: stop)
     pid        id    Show the launchd service PID
+    kill       k     Kill all clamshell processes
 
 EOF
 
@@ -49,6 +68,8 @@ Developer Commands:
 EOF
     fi
 }
+
+CLAMSHELL_DEBUG="${CLAMSHELL_DEBUG:-}"
 
 clamshelld_prefix="$HOME/Library/Clamshell/1.0.0"
 clamshelld_bin="$clamshelld_prefix/bin/clamshelld"
@@ -85,8 +106,8 @@ clamshell-vars() {
 # clamshell-daemon continuously checks the clamshell state
 # and puts the system to sleep when the clamshell mode is active.
 clamshell-daemon() {
-    logger "Starting clamshell daemon"
-    trap "logger 'Clamshell daemon stopped'; exit 0" INT TERM
+    logger "starting clamshell daemon"
+    trap "logger 'clamshell daemon stopped'; exit 0" INT TERM
 
     local t0
     local n=0
@@ -95,31 +116,83 @@ clamshell-daemon() {
     local awake_since=0
     local sleeping_for=0
     local awake_for=0
+    local idle_seconds=0
+    local last_exit=0
 
     t0="$(date +%s)"
     while sleep 1; do
+        (( n++ ))
+
         # Log Rotation
         # ============
-        (( n++ ))
-        (( elapsed = $(date +%s) - t0 ))
-        if (( elapsed > 86400 )); then
+        # Update elapsed time (once per minute), and rotate log every 24h.
+        if (( n % 60 == 0 ))
+        then (( elapsed = $(date +%s) - t0 ))
+        elif (( elapsed > 86400 )); then
+            clamshell-log-rotate
             t0="$(date +%s)"
-            logger "clamshell daemon running for 24h, saving log as $clamshelld_log.old"
-            cp -f "$clamshelld_log" "$clamshelld_log.old"
-            echo -n > "$clamshelld_log"
-            logger "log rotated after 24h, see $clamshelld_log.old for previous log"
+            elapsed=0
         fi
 
-        # Keep Sleeping
-        # =============
-        if clamshell-sleeping; then
-            (( sleeping_for = $(date +%s) - sleeping_since ))
-            if (( n % 600 == 0 )); then
-                # log every 10 minutes
+        # Sleep Check
+        # ===========
+        # If the system is sleeping, no action is taken.
+        if clamshell-sleeping
+        then
+            awake_since=0
+            if (( sleeping_since == 0 ))
+            then
+                sleeping_since="$(date +%s)"
+                logger "system entered sleep mode"
+            elif (( n % 600 == 0 ))
+            then
+                (( sleeping_for = $(date +%s) - sleeping_since ))
                 logger "system has been sleeping for ${sleeping_for}s"
             fi
-            sleep 10
+            # stop here and wait for the system to wake up
             continue
+        fi
+
+        # Awake Log
+        # =========
+        sleeping_since=0
+        if (( awake_since == 0 ))
+        then
+            awake_since="$(date +%s)"
+            logger "system became awake"
+        elif (( n % 600 == 0 ))
+        then
+            (( awake_for = $(date +%s) - awake_since ))
+            logger "system has been awake for ${awake_for}s"
+        fi
+
+        # Clamshell Check
+        # ===============
+        if clamshell-yes
+        then logger "clamshell mode detected, checking idle time"
+        else continue
+        fi
+
+        # Circut Breaker 1
+        # ================
+        # A misconfigured loop calling `clamshell-sleep` can be dangerous. If Apple changes the
+        # behavior of MacOS, this could put the system to sleep permanently. To prevent this,
+        # clamshell-daemon does an additional idle check, looking at HIDIdleTime in ioreg.
+        #
+        # .------------------------------------------------------.
+        # |  As a circut breaker for keeping the system awake,   |
+        # |  move the mouse or press keyboard keys continuously. |
+        # '------------------------------------------------------'
+        #
+        (( idle_seconds = $(clamshell-idle-ns) / second_ns ))
+        if test -z "$idle_seconds"
+        then logger "failed to get idle time, not initiating sleep, stopping daemon"
+             return 1
+        elif (( idle_seconds < 3 ))
+        then
+            logger "system is idle for less than 3s (${idle_seconds}s), waiting for idle"
+            continue
+        else logger "system is idle for ${idle_seconds}s and in clamshell mode, initiating sleep"
         fi
 
         # Try to Sleep
@@ -129,30 +202,21 @@ clamshell-daemon() {
         # the sleep command is only run every 15 seconds.
         # This will allow the user to open the lid and stop the daemon.
         if clamshell-sleep; then
+            last_exit=$?
             sleeping_since="$(date +%s)"
             awake_since=0
-            logger "system sleep initated, waiting 15 to reach sleep"
-            logger "to counter-act unwanted sleep, run 'clamshell unload' in the next 15s"
-            sleep 15
-            continue
+            logger "system sleep initated successfully"
+        else
+            last_exit=$?
+            logger "failed to initiate sleep (last_exit=$last_exit), waiting for next sleep attempt"
         fi
 
-        # Awaking
-        # =======
-        if (( awake_since == 0 )); then
-            awake_since="$(date +%s)"
-            logger "clamshell became awake"
-            continue
-        fi
-
-        # Stay Awake
-        # ==========
-        (( awake_for = $(date +%s) - awake_since ))
-        if (( n % 600 == 0 )); then
-            # log every 10 minutes
-            logger "system has been awake for ${awake_for}s"
-            continue
-        fi
+        # CircleBreaker 2
+        # ===============
+        # Indepent of the result of an attempted sleep, the daemon will wait for 30 seconds.
+        # This will allow the user to open the lid or activate the system to stop the daemon.
+        logger "waiting 30s after sleep attempt, run 'clamshell unload' to stop daemon"
+        sleep 30
     done
 }
 
@@ -195,12 +259,26 @@ clamshell-has-legacy() {
 # In case of an error, it returns 1 to prevent sleep.
 clamshell-idle-ns() { ioreg -c IOHIDSystem | grep "HIDIdleTime" | grep -oE "\d+" || echo 1; }
 
+# clamshell-idle-check prints the idle time in milliseconds every second.
+clamshell-idle-check() {
+    while ns="$(clamshell-idle-ns)"; do
+        (( s = ns / 1000000 ))
+        echo "${s}ms"
+        sleep 1
+    done
+}
 
 # Clamshell Commands
 # ==================
 
 clamshell-complete() { declare -f _clamshell; echo "complete -F _clamshell clamshell"; }
 clamshell-log()      { tail -F "$clamshelld_log"; }
+clamshell-log-rotate() {
+    logger "clamshell daemon running for 24h, saving log as $clamshelld_log.old"
+    cp -f "$clamshelld_log" "$clamshelld_log.old"
+    echo -n > "$clamshelld_log"
+    logger "log rotated after 24h, see $clamshelld_log.old for previous log"
+}
 
 # clamshell-summary displays a summary of the main clamshell checks
 clamshell-summary() {
@@ -226,19 +304,6 @@ clamshell-sleep() {
     else pmset="/usr/bin/pmset"
     fi
 
-    # clamshell-sleep can be a bad command if the system is not idle.
-    # If Apple changes the behavior of the system, this command could put the system to sleep permanently.
-    # To prevent this, clamshell-sleep checks if the system is idle for at least 1 minute.
-    local idle_seconds
-    (( idle_seconds = $(clamshell-idle-ns) / second_ns ))
-    if (( idle_seconds < 10 ))
-    then
-        if test -n "$CLAMSHELL_DEBUG"
-        then logger "system is idle for less than 10s (${idle_seconds}s), not initiating sleep"
-        fi
-        return 1
-    fi
-
     if clamshell-yes; then
         code=0
         if clamshell-has-display; then
@@ -255,7 +320,7 @@ clamshell-sleep() {
         fi
 
         if test $code -gt 0; then
-            logger "Failed to sleep, $pmset sleepnow exited with code=$code"
+            logger "failed to sleep, $pmset sleepnow exited with code=$code"
         fi
         return $code
 
@@ -379,11 +444,13 @@ clamshell-pid() {
 }
 
 clamshell-kill() {
+    echo "Unloading clamshelld service"
     clamshell-ctl unload
+    echo "Killing clamshelld processes"
     local pid sig
     for sig in TERM KILL; do
     for pid in $(sudo ps aux | grep clamshelld | grep -v grep | awk '{print $2}')
-    do sudo kill -$sig "$pid"
+    do echo "killing $pid with signal $sig"; sudo kill -$sig "$pid"
     done
     sleep 1  # wait for processes to exit
     done
@@ -469,6 +536,7 @@ clamshell-main() {
     done
 
     # run chained commands sequentially
+    # NOTE: Use `shellcheck` linter to find incompatible pattern overloads!
     local cmd
     for cmd in "$@"
     do case "$cmd" in
@@ -487,7 +555,7 @@ clamshell-main() {
         in*)           clamshell-install ;;
         un|uni*)       clamshell-uninstall ;;
         st|stat*)      clamshell-status ;;
-        pid*|id*)      clamshell-pid ;;
+        pid*|id)       clamshell-pid ;;
         log*)          clamshell-log ;;
         as*)           clamshell-assertions ;;
         ld|lo*|start*) clamshell-ctl load ;;
@@ -495,8 +563,8 @@ clamshell-main() {
         self*)         clamshell-selftest ;;
         var*)          clamshell-vars ;;
         k*)            clamshell-kill ;;
+        idle*)         clamshell-idle-check ;;
         *)             echo "Unknown command: $1"; return 1 ;;
-        # NOTE: Use `shellcheck` linter to find incompatible pattern overloads!
     esac
     done
 }

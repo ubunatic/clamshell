@@ -2,6 +2,7 @@
 
 ## How to convince powerd to sleep better?
 Also see `man pmset` for more details.
+
 Testing pmset changes:
 ```
 sudo pmset -a tcpkeepalive 0   # changes setting, shows a warning

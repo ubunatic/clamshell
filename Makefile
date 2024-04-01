@@ -9,7 +9,7 @@ all: lint test
 lint: ⚙️
 	shellcheck $(SRC)
 
-test: ⚙️
+test: ⚙️ lint
 	./$(SRC) selftest  # excute selftest
 
 # safe-release creates a new release and requires a VERSION argument
