@@ -2,7 +2,7 @@ class Clamshell < Formula
   desc "CLI and daemon for managing your MacBook's sleep in clamshell mode"
   homepage "https://github.com/ubunatic/clamshell"
   url "https://github.com/ubunatic/clamshell/archive/refs/tags/v1.0.2.tar.gz"
-  sha256 ""
+  sha256 "7d5e09db67e75cf125590cd5e7e61c31a4d2913ada2af72a2964e13fda461a38"
   head "https://github.com/ubunatic/clamshell.git", branch: "main"
   depends_on :macos
 
