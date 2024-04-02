@@ -21,6 +21,12 @@ brew install ubunatic/clamshell/clamshell
 ```
 Also see `brew help`, `man brew` or check [Homebrew's documentation](https://docs.brew.sh).
 
+If you use `ssh` to access Github, manually `brew tap` this repo first.
+```sh
+brew tap ubunatic/clamshell git@github.com:ubunatic/clamshell.git
+brew install ubunatic/clamshell/clamshell
+```
+
 Alternatively, just copy the [clamshell.sh](clamshell.sh) script to your `PATH` as `clamshell` binary.
 ```sh
 cp clamshell.sh /usr/local/bin/clamshell
