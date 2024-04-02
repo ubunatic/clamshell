@@ -22,37 +22,41 @@ clamshell-help() { cat <<-EOF
 Usage: clamshell [OPTION] [COMMAND]
 
 The clamshell CLI helps putting your MacBook to sleep and keeping it asleep when the lid is closed.
-See 'clamshell docs' to learn why you need it and how it works.
+See https://github.com/ubunatic/clamshell/blob/main/README.md#clamshell-mode why you need it and how it works.
 
 Options:
-    --debug  -d    Enable debug mode
-    --help   -h    Display this help
+    --debug  -d     Enable debug mode
+    --help   -h     Display this help
 
 Commands:
-    sleep               sl       Enter sleep using 'pmset sleepnow' when in clamshell mode
+    help      h     Display this help
+    sleep     sl    Enter sleep using 'pmset sleepnow' when in clamshell mode
+    daemon    dm    Continuously check clamshell mode and initiate sleep
+    version   v     Show the current clamshell version info
+    complete  co    Print the zsh/bash completion function (usage: eval "\$(clamshell complete)"
 
 Queries:
-    help                h        Display this help
     check               c        Check if clamshell mode is active (returns 0 if yes)
     has-display         disp     Check if the external display is connected (returns 0 if yes)
     has-legacy-display  ldisp    Check if the legacy display is awake (returns 0 if yes)
-    device-proxy        dp       Return the powerstate number of DCPDPDeviceProxy (should return 1 or 4)
-    sleeping            sln      Check if the system is sleeping (returns 0 if yes)
+    device-proxy        dp       Return the powerstate number of DCPDPDeviceProxy (should print 1 or 4)
+    asleep              asl      Check if the system is asleep (returns 0 if yes)
     awake               aw       Check if the system is awake (returns 0 if yes)
-    summary             sm       Display a summary of all checks
-    docs                doc      Explain what clamshell mode is and how it works
-    log                 log      Tail the clamshelld log file
-    version             v        Show the current clamshell version
 
-Daemon Commands:
-    daemon     dm    Runs the sleep command every second
-    install    in    Install a launchd service to run clamshelld
-    uninstall  un    Uninstall the launchd service
-    status     st    Check the status of the launchd service
-    load       ld    Start the launchd service (alias: start)
-    unload     ul    Stop the launchd service (alias: stop)
-    pid        id    Show the launchd service PID
-    kill       k     Kill all clamshell processes
+Status Commands:
+    summary    sm     Display a summary of all checks
+    log        log    Tail the clamshelld log file ($clamshelld_log)
+
+Agent Commands:
+    install    ins    Install a launchd service to run clamshelld
+    uninstall  uni    Uninstall the launchd service
+    status     st     Check the status of the launchd service
+    load       ld     Start the launchd service (alias: start)
+    unload     ul     Stop the launchd service (alias: stop)
+    pid        p      Show the launchd service PID
+    plist      ps     List all 'clamshelld' processes (uses 'ps aux')
+    pgrep      pg     Show full 'ps aux' output of all 'clamshelld' processes
+    pkill      pk     Kill all 'clamshelld' processes
 
 EOF
 
@@ -60,11 +64,10 @@ EOF
     then cat <<-EOF
 Developer Commands:
     selftest    self    Run a selftest to check if all commands work as expected
-    binary      bin     Compile the clamshell script to a clamshelld binary
+    idle        idl     Print the idle time in milliseconds every second
     assertions  asn     Show the pmset assertions that prevent sleep
-    complete    co      Print the zsh completion function
     source      src     Print the source of the script
-    vars        va      Print clamshell variables
+    vars        var     Print clamshell variables
 
 EOF
     fi
@@ -83,22 +86,31 @@ clamshelld_plist="$HOME/Library/LaunchAgents/$clamshelld_service"
 clamshelld_log="$HOME/Library/Logs/clamshelld.log"
 
 # Runtime Variables
-clamshell_version="v1.0.0"
+clamshell_version="v1.0.22"
 clamshell_source="$(realpath "$0")"
 clamshell_path="$(dirname "$0")"
-clamshell_share="$(dirname "$clamshell_path")/share/clamshell/clamshell.md"
 
 second_ns=1000000000
 
+clamshell-version() {
+    echo "clamshell version $clamshell_version ($clamshell_source)"
+}
+
 clamshell-vars() {
-    echo "clamshelld_service: $clamshelld_service"
-    echo "clamshelld_prefix:  $clamshelld_prefix  ($( exists "$clamshelld_prefix" ))"
-    echo "clamshelld_bin:     $clamshelld_bin  ($(    exists "$clamshelld_bin"    ))"
-    echo "clamshelld_plist:   $clamshelld_plist  ($(  exists "$clamshelld_plist"  ))"
-    echo "clamshelld_log:     $clamshelld_log  ($(    exists "$clamshelld_log"    ))"
+    echo "Runtime Variables:"
+    echo "  clamshell_version:  $clamshell_version"
+    echo "  clamshell_source:   $clamshell_source"
+    echo "  clamshell_path:     $clamshell_path"
+    echo "  ARCH:               $(uname -m)"
+    echo "  CLAMSHELL_DEBUG:    $CLAMSHELL_DEBUG"
     echo
-    echo "clamshell_path:     $clamshell_path  ($(    exists "$clamshell_path"    ))"
-    echo "clamshell_share:    $clamshell_share  ($(   exists "$clamshell_share"   ))"
+    echo "Launchd Service Variables:"
+    echo "  clamshelld_service: $clamshelld_service"
+    echo "  clamshelld_prefix:  $clamshelld_prefix  ($( exists "$clamshelld_prefix" ))"
+    echo "  clamshelld_bin:     $clamshelld_bin  ($(    exists "$clamshelld_bin"    ))"
+    echo "  clamshelld_plist:   $clamshelld_plist  ($(  exists "$clamshelld_plist"  ))"
+    echo "  clamshelld_log:     $clamshelld_log  ($(    exists "$clamshelld_log"    ))"
+    echo
 }
 
 
@@ -134,7 +146,8 @@ clamshell-daemon() {
         # Update elapsed time (once per minute), and rotate log every 24h.
         if (( n % 60 == 0 ))
         then (( elapsed = $(date +%s) - t0 ))
-        elif (( elapsed > 86400 )); then
+        elif (( elapsed > 86400 ))
+        then
             clamshell-log-rotate
             t0="$(date +%s)"
             elapsed=0
@@ -143,7 +156,7 @@ clamshell-daemon() {
         # Sleep Check
         # ===========
         # If the system is sleeping, no action is taken.
-        if clamshell-sleeping
+        if clamshell-asleep
         then
             awake_since=0
             if (( sleeping_since == 0 ))
@@ -207,7 +220,8 @@ clamshell-daemon() {
         # As a circut breaker for the breaking a misconfgured system,
         # the sleep command is only run every 15 seconds.
         # This will allow the user to open the lid and stop the daemon.
-        if clamshell-sleep; then
+        if clamshell-sleep
+        then
             last_exit=$?
             sleeping_since="$(date +%s)"
             awake_since=0
@@ -251,7 +265,7 @@ _clamshell() {
 
 clamshell-yes()         { ioreg -r -k AppleClamshellState | grep AppleClamshellState | grep -q "Yes"; }
 clamshell-no()          { ! clamshell-yes; }
-clamshell-sleeping()    { pmset -g assertions | grep -qE '^\s*PreventUserIdleSystemSleep\s*0'; }
+clamshell-asleep()      { pmset -g assertions | grep -qE '^\s*PreventUserIdleSystemSleep\s*0'; }
 clamshell-awake()       { pmset -g assertions | grep -qE '^\s*PreventUserIdleSystemSleep\s*1'; }
 clamshell-assertions()  { pmset -g assertions | grep -E  'PreventUserIdleSystemSleep'; }
 clamshell-proxy-num()   { pmset -g powerstate | grep -cE 'DCPDPDeviceProxy'; }
@@ -288,17 +302,26 @@ clamshell-log-rotate() {
 
 # clamshell-summary displays a summary of the main clamshell checks
 clamshell-summary() {
-    echo "ARCH: $(uname -m)"
-    echo
     clamshell-vars
+    echo "System Commands:"
+    echo "  pmset:     $(type pmset)"
+    echo "  ioreg:     $(type ioreg)"
+    echo "  launchctl: $(type launchctl)"
     echo
-    echo "clamshell-yes:         $(clamshell-yes         && echo Yes || echo No)"
-    echo "clamshell-has-display: $(clamshell-has-display && echo Yes || echo No)"
-    echo "clamshell-has-legacy:  $(clamshell-has-legacy  && echo Yes || echo No)"
-    echo "clamshell-sleeping:    $(clamshell-sleeping    && echo Yes || echo No)"
-    echo "clamshell-pid:         $(clamshell-pid || echo No)"
-    echo "clamshell-proxy-num:   $(clamshell-proxy-num)"
-    echo "clamshell-sleep:       $(CLAMSHELL_DEBUG=1 clamshell-sleep)"
+    echo "Processes:"
+    clamshell-plist
+    echo
+    echo "Clamshell Query Results:"
+    echo "  clamshell-check:       $(clamshell-yes         && echo Yes || echo No)"
+    echo "  clamshell-has-display: $(clamshell-has-display && echo Yes || echo No)"
+    echo "  clamshell-has-legacy:  $(clamshell-has-legacy  && echo Yes || echo No)"
+    echo "  clamshell-asleep:      $(clamshell-asleep      && echo Yes || echo No)"
+    echo "  clamshell-awake:       $(clamshell-awake       && echo Yes || echo No)"
+    echo "  clamshell-pid:         $(clamshell-pid || echo No)"
+    echo "  clamshell-proxy-num:   $(clamshell-proxy-num)"
+    echo "  clamshell-idle-ns:     $(clamshell-idle-ns)"
+    echo "  clamshell-sleep:       $(CLAMSHELL_DEBUG=1 clamshell-sleep)"
+    echo
 }
 
 # clamshell-sleep initiates sleep if clamshell mode is active and returns 0 on success.
@@ -310,28 +333,35 @@ clamshell-sleep() {
     else pmset="/usr/bin/pmset"
     fi
 
-    if clamshell-yes; then
-        code=0
-        if clamshell-has-display; then
+    if clamshell-yes
+    then
+        code=1  # set pmset default exit code to 1
+        if clamshell-has-display
+        then
             logger-n "clamshell detected, display found, initating sleep cmd=$pmset arg=sleepnow"
             $pmset sleepnow
             code=$?
-        elif clamshell-has-legacy; then
+        elif clamshell-has-legacy
+        then
             logger-n "clamshell detected, legacy display found, initating sleep cmd=$pmset arg=sleepnow"
             $pmset sleepnow
             code=$?
-        elif test -n "$CLAMSHELL_DEBUG"; then
+        elif test -n "$CLAMSHELL_DEBUG"
+        then
             # echo a noop command to stdout as sleep command output for testing
             echo noop "(lid open or display asleep)"
+            return 1
+        else
+            # return 1 to prevent sleep if no display is found
+            return 1
         fi
 
-        if test $code -gt 0; then
-            logger "failed to sleep, $pmset sleepnow exited with code=$code"
+        if test $code -gt 0
+        then logger "failed to sleep, $pmset sleepnow exited with code=$code"
         fi
         return $code
-
-    elif test -n "$CLAMSHELL_DEBUG"; then
-        echo noop "(no clamshell)"
+    elif test -n "$CLAMSHELL_DEBUG"
+    then echo noop "(no clamshell)"
     fi
     return 1
 }
@@ -343,22 +373,11 @@ clamshell-sleep() {
 # All required steps are directly implemented in the script instead of a Homebrew Formula
 # to give users more control over the installation process.
 
-# clamshell-binary finds location of used clamshell binary.
+# clamshell-binary finds the location of the currently used clamshell binary.
 clamshell-source() {
     local here="$clamshell_path"
     for f in "$here/clamshell.sh" "$here/clamshell"; do
         test -e "$f" && realpath "$f" && return 0
-    done
-    return 1
-}
-
-# clamshell-docs finds the location of the clamshell documentation.
-clamshell-docs() {
-    local here="$clamshell_path"
-    for d in "$here/../share/clamshell" "$here"; do
-    for f in "$d/clamshell.md" "$d/README.md"; do
-        test -e "$f" && realpath "$f" && return 0
-    done
     done
     return 1
 }
@@ -452,13 +471,15 @@ clamshell-pid() {
     launchctl list "$clamshelld_service" 2>/dev/null | grep -E '"PID"' | grep -oE '\d+'
 }
 
-clamshell-kill() {
+clamshell-pgrep() { sudo ps aux | grep clamshelld | grep -v grep; }
+clamshell-plist() { clamshell-pgrep | tr -s ' ' | cut -d' ' -f 2,11-; }
+clamshell-pkill() {
     echo "Unloading clamshelld service"
     clamshell-ctl unload
     echo "Killing clamshelld processes"
     local pid sig
     for sig in TERM KILL; do
-    for pid in $(sudo ps aux | grep clamshelld | grep -v grep | awk '{print $2}')
+    for pid in $(clamshell-pgrep | tr -s ' ' | cut -d' ' -f 2)
     do echo "killing $pid with signal $sig"; sudo kill -$sig "$pid"
     done
     sleep 1  # wait for processes to exit
@@ -503,7 +524,7 @@ clamshell-selftest() {(
     clamshell-complete  >/dev/null || err "clamshell complete failed"
     clamshell-proxy-num >/dev/null || err "clamshell proxy-num failed"
     clamshell-awake                || err "clamshell awake failed"
-    ! clamshell-sleeping           || err "clamshell sleeping failed"
+    ! clamshell-asleep             || err "clamshell asleep failed"
 
     # commands without output should not show any errors
     # do not run these tests in clamshell mode
@@ -515,7 +536,6 @@ clamshell-selftest() {(
     # commands with output should not show any bash errors
     clamshell-summary          | nobasherr "clamshell summary failed"
     clamshell-help             | nobasherr "clamshell help failed"
-    clamshell-docs             | nobasherr "clamshell help failed"
     clamshell-status           | nobasherr "clamshell status failed"
     clamshell-ctl load         | nobasherr "clamshell ctl load failed"
     clamshell-ctl unload       | nobasherr "clamshell ctl unload failed"
@@ -533,14 +553,17 @@ clamshell-main() {
     then clamshell-help; return 1
     fi
 
+    if ! (type ioreg && type pmset && type launchctl) >/dev/null
+    then echo "missing commands: ioreg, pmset, launchctl (clamshell only works on MacOS)"; return 1
+    fi
+
     # run one-time commands and set flags
     local flag
     for flag in "$@"
     do case "$flag" in
         -d|--debug)    export CLAMSHELL_DEBUG=1 ;;
         -h|--help|h*)  clamshell-help; return 0 ;;
-        doc*|man*)     (clamshell-help; clamshell-docs) | less; return 0 ;;
-        v*|--v*)       echo "clamshell version $clamshell_version ($clamshell_source)"; return 0 ;;
+        v|ver*|--v*)   clamshell-version; return 0 ;;
         -*)            echo "Unknown option: $1"; return 1 ;;
     esac
     done
@@ -550,30 +573,33 @@ clamshell-main() {
     local cmd
     for cmd in "$@"
     do case "$cmd" in
-        -*)            ;;  # ignore flags (parsed above)
-        y*|c|ch*)      clamshell-yes ;;
+        y|yes|c|ch*)   clamshell-yes ;;
         n|no*)         clamshell-no ;;
         di*|has-d*)    clamshell-has-display ;;
         ldi*|has-l*)   clamshell-has-legacy ;;
         dp|dev*)       clamshell-proxy-num ;;
-        sleepi*|sln*)  clamshell-sleeping ;;
-        sl*)           clamshell-sleep ;;
         aw*)           clamshell-awake ;;
-        su*)           clamshell-summary ;;
-        d|da*)         clamshell-daemon | tee -i -a "$clamshelld_log" ;;
+        asl*|sl*n)     clamshell-asleep ;;
+        sl*)           clamshell-sleep ;;
+        da*|d)         clamshell-daemon | tee -i -a "$clamshelld_log" ;;
         co*)           clamshell-complete ;;
-        in*)           clamshell-install ;;
-        un|uni*)       clamshell-uninstall ;;
-        st|stat*)      clamshell-status ;;
-        pid*|id)       clamshell-pid ;;
+        ins*)          clamshell-install ;;
+        uni*)          clamshell-uninstall ;;
+        stat*|st)      clamshell-status ;;
+        su*)           clamshell-summary ;;
         log*)          clamshell-log ;;
         as*)           clamshell-assertions ;;
-        ld|lo*|start*) clamshell-ctl load ;;
-        ul|unl*|stop*) clamshell-ctl unload ;;
+        lo*|start*|ld) clamshell-ctl load ;;
+        unl*|stop*|ul) clamshell-ctl unload ;;
+        pid*|p)        clamshell-pid ;;
+        pl*|ls|ps)     clamshell-plist ;;
+        pg*|grep)      clamshell-pgrep ;;
+        pk*|kill)      clamshell-pkill ;;
         self*)         clamshell-selftest ;;
+        idl*)          clamshell-idle-check ;;
         var*)          clamshell-vars ;;
-        k*)            clamshell-kill ;;
-        idle*)         clamshell-idle-check ;;
+        s*rc*)         clamshell-source ;;
+        -*)            ;;  # ignore flags (already parsed)
         *)             echo "Unknown command: $1"; return 1 ;;
     esac
     done

@@ -10,21 +10,20 @@ Disclaimer
 The `clamshell daemon` command and the provided LaunchAgent will try to continuously put MacOS to sleep if clamshell mode is detected. Please `clamshell uninstall` the agent before running OS updates and doing other system-critical work on your OS!
 
 This software is provided "as is" (see [LICENSE](LICENSE)). \
-Do not run this software if you are unsure how to uninstall it! \
+Do not run this software if you are unsure how to stop and uninstall it! \
 Do not run this software if you are unsure how to manually stop and remove it if it breaks!
 
-Basic Usage
------------
-Manual usage as self-contained script.
+Installation
+------------
+Install as Homebrew tap.
 ```sh
-cp clamshell.sh $HOME/.local/bin/clamshell  # copy to PATH
-clamshell help                              # use it
+brew install ubunatic/clamshell/clamshell
 ```
+Also see `brew help`, `man brew` or check [Homebrew's documentation](https://docs.brew.sh).
 
-Or just install it - without putting it on the `PATH` - and let it do its job.
+Alternatively, just copy the [clamshell.sh](clamshell.sh) script to your `PATH` as `clamshell` binary.
 ```sh
-./clamshell.sh install  # installs the LaunchAgent
-./clamshell.sh status   # show status of agent
+cp clamshell.sh /usr/local/bin/clamshell
 ```
 
 Setup the built-in bash/zsh completion.
@@ -34,6 +33,10 @@ if type clamshell >/dev/null
 then eval "$(clamshell complete)"
 fi
 ```
+
+See `clamshell help` for how to use it.
+
+See [Agent Installation](#agent-installation) for how to install it as [MacOS launchd agent](https://developer.apple.com/library/archive/documentation/MacOSX/Conceptual/BPSystemStartup/Chapters/CreatingLaunchdJobs.html).
 
 Clamshell Mode
 --------------
@@ -54,8 +57,8 @@ the lid is closed. This is a long-standing issue that Apple has not addressed.
 
 How it works
 ------------
-MacBooks can detect if the lid is closed or not and will expose this in the IORegistry.
-Using the `ioreg` command you can check the `AppleClamshellState` key in the IORegistry.
+MacBooks can detect if the lid is closed or not and will expose this in the [I/O Registry](https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/IOKitFundamentals/TheRegistry/TheRegistry.html).
+Using the `ioreg` command you can check the `AppleClamshellState` key in the registry.
 
 - If the key is set to `Yes`, the MacBook is in clamshell mode
 - If the key is set to `No`, the MacBook is not in clamshell mode
@@ -70,22 +73,24 @@ The `clamshell` CLI can be run manually or as "daemon"
 - Run `clamshell sleep` to check for clamshell mode once and initiate sleep manually
 - Run `clamshell daemon` to continuously check and sleep
 
-Since you do not want to run this command everytime after closing the lid, you can install
+Since you do not want to run this command everytime after closing the lid, you can [install](#agent-installation)
 the script as `clamshelld` LaunchAgent. This will run the `clamshell sleep` logic continuously in the background as needed; and protected by some [Circut Breakers](docs/development.md#circut-breakers)
 
 The agent will counter any accidental wakeups immediately and the MacBook stays asleep.
 To wake up the MacBook, you must open the lid then.
 
-Installation
-------------
-Run `clamshell install` to install the LaunchAgent. \
-Run `clamshell uninstall` to uninstall the LaunchAgent. \
-Run `clamshell status` to check the status of the agent. \
-You can temporarily start and stop the agent using `clamshell load` and `clamshell unload`.
+Agent Installation
+------------------
+```sh
+clamshell install    # installs the clamshelld agent
+clamshell status     # show status of agent
+clamshell log        # attaches to the clamshelld log
+clamshell unload     # temporarly unload the agent
+clamshell load       # load the unloaded agent
+clamshell uninstall  # uninstalls the agent
+```
 
-The agent installation requires `sudo` permissions for creating the `plist` file
-in `$HOME/Library/LaunchAgents` and for copying the binary file to `$HOME/Library/Clamshell`.
-It will prompt you for your password.
+The agent installation requires `sudo` permissions for creating the `plist` file in `$HOME/Library/LaunchAgents` and for copying the binary file to `$HOME/Library/Clamshell`. It will prompt you for your password.
 
 See `clamshell help` for more daemon and agent commands and options.
 

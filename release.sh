@@ -51,7 +51,7 @@ then echo "Working directory is clean"
 elif read -rp "Stage all changes? (y/N) " yesno &&
      test "$yesno" = "y" &&
      git add . &&
-     git commit -m "release version $VERSION"
+     git commit -m "release step 1: set version $VERSION"
 then echo "Committed pending changes"
 else echo "Please commit changes before running this script!"; exit 1
 fi
@@ -89,20 +89,22 @@ echo "Testing formula build"
 rm -f "$HOME"/Library/Caches/Homebrew/downloads/*clamshell-*.tar.gz
 brew uninstall --force clamshell 2>/dev/null
 
-if brew install --build-from-source Formula/clamshell.rb &&
+if brew install --build-from-source --formula Formula/clamshell.rb &&
    /opt/homebrew/bin/clamshell --version | grep -q "$VERSION"
 then echo "Formula build successful"
 else echo "Failed to build formula"; exit 1
 fi
 
-if git diff --exit-code
+if git diff --exit-code --quiet
 then echo "Formula changes are clean"; exit 0
 fi
 
 echo "Committing and pushing formula changes"
 if git add Formula/clamshell.rb &&
-   git commit -m "update Formula sha256 for $VERSION" &&
+   git commit -m "release step 2: update sha256 for $VERSION" &&
    git push
 then echo "Formula sha256 committed and pushed"
 else echo "Failed to commit and push formula sha256"; exit 1
 fi
+
+echo "Please run 'make cicd' to perform a complete test of the release"
