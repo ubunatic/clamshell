@@ -18,7 +18,7 @@ test: ⚙️ lint
 	./$(SRC) selftest
 
 # local install
-install: ⚙️
+install: ⚙️ brew-uninstall
 	install -m 0755 $(SRC) /usr/local/bin/clamshell
 	type clamshell | grep -q /usr/local/bin/clamshell
 
@@ -33,7 +33,7 @@ release: ⚙️
 
 brew-tap:       ⚙️; brew tap ubunatic/clamshell git@github.com:ubunatic/clamshell.git
 brew-audit:     ⚙️; brew audit --new --git $(FORMULA)
-brew-install:   ⚙️; brew install $(FORMULA)
+brew-install:   ⚙️; brew install $(FORMULA) && type clamshell | grep -q /opt/homebrew/bin/clamshell
 brew-uninstall: ⚙️; brew uninstall -f clamshell
 brew-cleanup:   ⚙️; brew cleanup -s clamshell; rm -rf $(TAP_LOCAL)
 
@@ -42,7 +42,6 @@ cicd: ⚙️ lint test
 	# 🧪 testing local install 🧪
 	# ---------------------------
 	@$(MAKE) install
-	type clamshell | grep -q /usr/local/bin/clamshell
 	clamshell selftest
 	clamshell version
 	clamshell install
@@ -53,7 +52,6 @@ cicd: ⚙️ lint test
 	# 🧪 testing brew install 🧪
 	# --------------------------
 	@$(MAKE) brew-tap brew-audit brew-install
-	type clamshell | grep -q /opt/homebrew/bin/clamshell
 	clamshell selftest
 	clamshell version
 	clamshell install
