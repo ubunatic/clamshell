@@ -51,8 +51,8 @@ Agent Commands:
     install    ins    Install a launchd service to run clamshelld
     uninstall  uni    Uninstall the launchd service
     status     st     Check the status of the launchd service
-    load       ld     Start the launchd service (alias: start)
-    unload     ul     Stop the launchd service (alias: stop)
+    load       ld     Start the launchd service (alias: enable)
+    unload     ul     Stop the launchd service (alias: disable)
     pid        p      Show the launchd service PID
     plist      ps     List all 'clamshelld' processes (uses 'ps aux')
     pgrep      pg     Show full 'ps aux' output of all 'clamshelld' processes
@@ -192,14 +192,14 @@ clamshell-daemon() {
         else continue
         fi
 
-        # Circut Breaker 1
+        # Circuit Breaker 1
         # ================
         # A misconfigured loop calling `clamshell-sleep` can be dangerous. If Apple changes the
         # behavior of MacOS, this could put the system to sleep permanently. To prevent this,
         # clamshell-daemon does an additional idle check, looking at HIDIdleTime in ioreg.
         #
         # .------------------------------------------------------.
-        # |  As a circut breaker for keeping the system awake,   |
+        # |  As a circuit breaker for keeping the system awake,   |
         # |  move the mouse or press keyboard keys continuously. |
         # '------------------------------------------------------'
         #
@@ -217,7 +217,7 @@ clamshell-daemon() {
         # Try to Sleep
         # ============
         # This will put the system to sleep if clamshell mode is active.
-        # As a circut breaker for the breaking a misconfgured system,
+        # As a circuit breaker for the breaking a misconfgured system,
         # the sleep command is only run every 15 seconds.
         # This will allow the user to open the lid and stop the daemon.
         if clamshell-sleep
@@ -575,7 +575,7 @@ clamshell-main() {
     do case "$cmd" in
         y|yes|c|ch*)   clamshell-yes ;;
         n|no*)         clamshell-no ;;
-        di*|has-d*)    clamshell-has-display ;;
+        disp*|has-d*)  clamshell-has-display ;;
         ldi*|has-l*)   clamshell-has-legacy ;;
         dp|dev*)       clamshell-proxy-num ;;
         aw*)           clamshell-awake ;;
@@ -589,8 +589,8 @@ clamshell-main() {
         su*)           clamshell-summary ;;
         log*)          clamshell-log ;;
         as*)           clamshell-assertions ;;
-        lo*|start*|ld) clamshell-ctl load ;;
-        unl*|stop*|ul) clamshell-ctl unload ;;
+        lo*|ld|ena*)   clamshell-ctl load ;;
+        unl*|ul|dis*)  clamshell-ctl unload ;;
         pid*|p)        clamshell-pid ;;
         pl*|ls|ps)     clamshell-plist ;;
         pg*|grep)      clamshell-pgrep ;;

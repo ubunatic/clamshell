@@ -74,7 +74,7 @@ The `clamshell` CLI can be run manually or as "daemon"
 - Run `clamshell daemon` to continuously check and sleep
 
 Since you do not want to run this command everytime after closing the lid, you can [install](#agent-installation)
-the script as `clamshelld` LaunchAgent. This will run the `clamshell sleep` logic continuously in the background as needed; and protected by some [Circut Breakers](docs/development.md#circut-breakers)
+the script as `clamshelld` LaunchAgent. This will run the `clamshell sleep` logic continuously in the background as needed; and protected by some [Circuit Breakers](docs/development.md#circuit-breakers)
 
 The agent will counter any accidental wakeups immediately and the MacBook stays asleep.
 To wake up the MacBook, you must open the lid then.
@@ -85,8 +85,8 @@ Agent Installation
 clamshell install    # installs the clamshelld agent
 clamshell status     # show status of agent
 clamshell log        # attaches to the clamshelld log
-clamshell unload     # temporarly unload the agent
-clamshell load       # load the unloaded agent
+clamshell unload     # disable the agent
+clamshell load       # enable the agent
 clamshell uninstall  # uninstalls the agent
 ```
 

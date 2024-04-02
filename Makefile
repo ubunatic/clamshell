@@ -2,6 +2,7 @@
 
 SRC=clamshell.sh
 VERSION=
+LATEST=$(shell git describe --tags --abbrev=0)
 TAP=ubunatic/clamshell
 TAP_LOCAL=/opt/homebrew/Library/Taps/ubunatic/homebrew-clamshell
 FORMULA=$(TAP)/clamshell
@@ -12,6 +13,7 @@ all: ⚙️ lint test
 lint: ⚙️
 	shellcheck $(SRC)
 	brew style Formula/clamshell.rb
+	misspell *.md **/*.md
 
 # excute embedded selftest
 test: ⚙️ lint
@@ -37,14 +39,16 @@ brew-install:   ⚙️; brew install $(FORMULA) && type clamshell | grep -q /opt
 brew-uninstall: ⚙️; brew uninstall -f clamshell
 brew-cleanup:   ⚙️; brew cleanup -s clamshell; rm -rf $(TAP_LOCAL)
 
+cicd: VERSION=$(LATEST)
 cicd: ⚙️ lint test
 	# ---------------------------
 	# 🧪 testing local install 🧪
 	# ---------------------------
 	@$(MAKE) install
 	clamshell selftest
-	clamshell version
+	clamshell version | grep -q "$(VERSION)"
 	clamshell install
+	clamshell pid | grep -qE '[0-9]+'
 	clamshell uninstall
 	@$(MAKE) uninstall
 	@echo "✅ local install tests: OK"
@@ -53,8 +57,9 @@ cicd: ⚙️ lint test
 	# --------------------------
 	@$(MAKE) brew-tap brew-audit brew-install
 	clamshell selftest
-	clamshell version
+	clamshell version | grep -q "$(VERSION)"
 	clamshell install
+	clamshell pid | grep -qE '[0-9]+'
 	clamshell uninstall
 	@$(MAKE) brew-uninstall brew-cleanup
 	@echo "✅ brew install tests: OK"

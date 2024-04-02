@@ -18,14 +18,14 @@ All features must be accessible through the [clamshell.sh](clamshell.sh) script!
 - Before committing, run `./clamshell.sh install` and then `clamshell COMMAND` to test again
 - Run `clamshell selftest` and `make test` regularly
 
-## Circut Breakers
+## Circuit Breakers
 The MacOS LaunchAgent will run `clamshell daemon`, which tries to put the system to sleep continuously. If Apple changes how MacOS works in a very unexpected way, this may prevent the user from interacting with the system.
 
-Therefore `clamshell daemon` excercises two *circut breakers* to allow for stopping the daemon.
+Therefore `clamshell daemon` excercises two *circuit breakers* to allow for stopping the daemon.
 
-These circut breakers must be tested regularly!
+These circuit breakers must be tested regularly!
 
-## Circut Breaker 1: Idle Timeout
+## Circuit Breaker 1: Idle Timeout
 1. Run `clamshell idle` to check if the idle timeout is working
 2. Run `clamshell load` and enter clamshell mode (close the lid) and wait 30 Seconds.
 3. Press a key and start moving the mouse every 2 Seconds (keep the lid closed)
@@ -33,7 +33,7 @@ These circut breakers must be tested regularly!
 5. Enter `clamshell unload` (you can stop moving the mouse now)
 6. See `clamshell log` to observe idle handling.
 
-## Circut Breaker 2: Pause after Sleep
+## Circuit Breaker 2: Pause after Sleep
 1. Run `clamshell load` and enter clamshell mode (close the lid)
 2. After 5 Seconds, activate the system (keep the lid closed)
 3. Login quickly (you have 30 Seconds in total)
