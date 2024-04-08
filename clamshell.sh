@@ -90,7 +90,7 @@ clamshelld_plist="$HOME/Library/LaunchAgents/$clamshelld_service"
 clamshelld_log="$HOME/Library/Logs/clamshelld.log"
 
 # Runtime Variables
-clamshell_version="v1.0.2"
+clamshell_version="v1.0.0"
 clamshell_source="$(realpath "$0")"
 clamshell_path="$(dirname "$0")"
 
